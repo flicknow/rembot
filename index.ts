@@ -80,7 +80,7 @@ async function followBack (agent:BskyAgent) {
   
     console.log(`following back ${did}`)
 
-    agent.app.bsky.graph.follow.create({
+    await agent.app.bsky.graph.follow.create({
       "repo": agent.session!.did
     }, {
       "createdAt": new Date().toISOString(),
