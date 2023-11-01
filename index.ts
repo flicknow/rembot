@@ -141,10 +141,18 @@ async function subscribeMutes(agent:BskyAgent) {
 async function syncAccount (username:string, password:string) {
   const agent = new BskyAgent({ service: 'https://bsky.social' })
 
-  await agent.login({
+  const did = await agent.login({
     identifier: username,
     password: password,
+  }).then(response => {
+    return response.data.did
+  }).catch(reason => {
+    console.log( reason.status == 401 ? `WARNING: could not log in as \`${username}\`. skipping..` : reason )
+    return null
   })
+  if ( ! did ) {
+    return
+  }
 
   await blockThem(agent)
   await followBack(agent)
