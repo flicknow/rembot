@@ -1,10 +1,47 @@
 import { BskyAgent } from '@atproto/api'
 import xlsx from 'node-xlsx'
 
-const MUTELIST = "at:// uri for mute list"
-
+const MUTELIST = "at://did:plc:ggbmh5c5soitgcfingxpnvyd/app.bsky.graph.list/3kbr5xeack62b"
 // TODO: rem knows who they are, block their ass rem
 const THEM = "did of someone"
+
+const FOLLOW   = "at://did:plc:asb3rgscdkkv636buq6blof6/app.bsky.graph.list/3kdkaifl3sy2b"
+const NOFOLLOW = "at://did:plc:asb3rgscdkkv636buq6blof6/app.bsky.graph.list/3kdkipovagh2f"
+
+async function getListMembers (agent:BskyAgent, uri:string) : Promise<string[]> {
+  const members:string[] = []
+  const limit = 100
+
+  var cursor:string|undefined = undefined
+  var done = false
+  while (!done) {
+    var res = await agent.app.bsky.graph.getList({"cursor": cursor, "limit": limit, "list": uri })
+    res.data.items.forEach( item => members.push(item.subject.did) )
+
+    cursor = res.data.cursor
+    if ( ! cursor || ( res.data.items.length < limit ) )  {
+      done = true
+    }
+  }
+
+  return new Promise((resolve, reject) => { resolve(members.sort()) });
+}
+
+var followListMembers:string[] = []
+async function getFollowListMembers (agent:BskyAgent) : Promise<string[]> {
+  if ( !followListMembers.length ) {
+    followListMembers = await getListMembers(agent, FOLLOW)
+  }
+  return new Promise((resolve, reject) => { resolve(followListMembers) });
+}
+
+var noFollowListMembers:string[] = []
+async function getNoFollowListMembers (agent:BskyAgent) : Promise<string[]> {
+  if ( !noFollowListMembers.length ) {
+    noFollowListMembers = await getListMembers(agent, NOFOLLOW)
+  }
+  return new Promise((resolve, reject) => { resolve(noFollowListMembers) });
+}
 
 async function getFollows (agent:BskyAgent) : Promise<string[]> {
   const actor = agent.session!.did
@@ -69,15 +106,31 @@ async function getBlocks (agent:BskyAgent) : Promise<string[]> {
 }
 
 async function followBack (agent:BskyAgent) {
-  const follows = (await getFollows(agent)).reduce((m, did) => {
-    m.set(did, true)
-    return m
-  }, new Map())
+  const current   = agent.session!.did
+  const follows   = await getFollows(agent)
+  const nofollows = await getNoFollowListMembers(agent)
+
+  const listMembers = await getFollowListMembers(agent)
+  for (const did of listMembers) {
+    if ( current == did        ) continue
+    if ( follows.includes(did) ) continue
+
+    console.log(`following alt ${did}`)
+
+    await agent.app.bsky.graph.follow.create({
+      "repo": agent.session!.did
+    }, {
+      "createdAt": new Date().toISOString(),
+      "subject": did
+    })
+  }
 
   const followers = await getFollowers(agent)
   for (const did of followers) {
-    if ( follows.get(did) ) continue
-  
+    if ( follows.includes(did)     ) continue
+    if ( nofollows.includes(did)   ) continue
+    if ( listMembers.includes(did) ) continue
+
     console.log(`following back ${did}`)
 
     await agent.app.bsky.graph.follow.create({
